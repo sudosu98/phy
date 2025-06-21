@@ -5,6 +5,7 @@
 
 /**
  * A 3D vector class for physics calculations
+ * Optimized with inline methods and move semantics
  */
 class Vector3D {
 public:
@@ -12,71 +13,77 @@ public:
     double x, y, z;
     
     // Constructors
-    Vector3D() : x(0.0), y(0.0), z(0.0) {}
-    Vector3D(double x, double y, double z) : x(x), y(y), z(z) {}
+    constexpr Vector3D() noexcept : x(0.0), y(0.0), z(0.0) {}
+    constexpr Vector3D(double x, double y, double z) noexcept : x(x), y(y), z(z) {}
     
     // Copy constructor
-    Vector3D(const Vector3D& other) = default;
+    constexpr Vector3D(const Vector3D& other) noexcept = default;
     
-    // Assignment operator
-    Vector3D& operator=(const Vector3D& other) = default;
+    // Move constructor
+    constexpr Vector3D(Vector3D&& other) noexcept = default;
+    
+    // Assignment operators
+    constexpr Vector3D& operator=(const Vector3D& other) noexcept = default;
+    constexpr Vector3D& operator=(Vector3D&& other) noexcept = default;
     
     // Vector addition
-    Vector3D operator+(const Vector3D& rhs) const {
+    constexpr inline Vector3D operator+(const Vector3D& rhs) const noexcept {
         return Vector3D(x + rhs.x, y + rhs.y, z + rhs.z);
     }
     
     // Vector subtraction
-    Vector3D operator-(const Vector3D& rhs) const {
+    constexpr inline Vector3D operator-(const Vector3D& rhs) const noexcept {
         return Vector3D(x - rhs.x, y - rhs.y, z - rhs.z);
     }
     
     // Scalar multiplication
-    Vector3D operator*(double scalar) const {
+    constexpr inline Vector3D operator*(double scalar) const noexcept {
         return Vector3D(x * scalar, y * scalar, z * scalar);
     }
     
     // Scalar division
-    Vector3D operator/(double scalar) const {
-        return Vector3D(x / scalar, y / scalar, z / scalar);
+    inline Vector3D operator/(double scalar) const {
+        double invScalar = 1.0 / scalar; // Compute once instead of three divisions
+        return Vector3D(x * invScalar, y * invScalar, z * invScalar);
     }
     
     // Compound assignment operators
-    Vector3D& operator+=(const Vector3D& rhs) {
+    constexpr inline Vector3D& operator+=(const Vector3D& rhs) noexcept {
         x += rhs.x;
         y += rhs.y;
         z += rhs.z;
         return *this;
     }
     
-    Vector3D& operator-=(const Vector3D& rhs) {
+    constexpr inline Vector3D& operator-=(const Vector3D& rhs) noexcept {
         x -= rhs.x;
         y -= rhs.y;
         z -= rhs.z;
         return *this;
     }
     
-    Vector3D& operator*=(double scalar) {
+    constexpr inline Vector3D& operator*=(double scalar) noexcept {
         x *= scalar;
         y *= scalar;
         z *= scalar;
         return *this;
     }
     
-    Vector3D& operator/=(double scalar) {
-        x /= scalar;
-        y /= scalar;
-        z /= scalar;
+    inline Vector3D& operator/=(double scalar) {
+        double invScalar = 1.0 / scalar; // Compute once instead of three divisions
+        x *= invScalar;
+        y *= invScalar;
+        z *= invScalar;
         return *this;
     }
     
     // Dot product
-    double dot(const Vector3D& rhs) const {
+    constexpr inline double dot(const Vector3D& rhs) const noexcept {
         return x * rhs.x + y * rhs.y + z * rhs.z;
     }
     
     // Cross product
-    Vector3D cross(const Vector3D& rhs) const {
+    constexpr inline Vector3D cross(const Vector3D& rhs) const noexcept {
         return Vector3D(
             y * rhs.z - z * rhs.y,
             z * rhs.x - x * rhs.z,
@@ -85,32 +92,43 @@ public:
     }
     
     // Magnitude (length) of the vector
-    double magnitude() const {
-        return std::sqrt(x * x + y * y + z * z);
+    inline double magnitude() const noexcept {
+        return std::sqrt(magnitudeSquared());
     }
     
     // Squared magnitude (faster when only comparing lengths)
-    double magnitudeSquared() const {
+    constexpr inline double magnitudeSquared() const noexcept {
         return x * x + y * y + z * z;
     }
     
     // Normalize the vector (make it unit length)
-    Vector3D normalize() const {
+    inline Vector3D normalize() const {
         double mag = magnitude();
         if (mag > 0) {
-            return Vector3D(x / mag, y / mag, z / mag);
+            double invMag = 1.0 / mag;
+            return Vector3D(x * invMag, y * invMag, z * invMag);
         }
         return Vector3D();
     }
     
+    // Check if vector is zero (within epsilon)
+    constexpr inline bool isZero(double epsilon = 1e-10) const noexcept {
+        return magnitudeSquared() < epsilon * epsilon;
+    }
+    
     // Distance between two points
-    static double distance(const Vector3D& a, const Vector3D& b) {
+    static inline double distance(const Vector3D& a, const Vector3D& b) noexcept {
         return (b - a).magnitude();
     }
     
     // Squared distance between two points (faster)
-    static double distanceSquared(const Vector3D& a, const Vector3D& b) {
+    static constexpr inline double distanceSquared(const Vector3D& a, const Vector3D& b) noexcept {
         return (b - a).magnitudeSquared();
+    }
+    
+    // Linear interpolation between two vectors
+    static inline Vector3D lerp(const Vector3D& a, const Vector3D& b, double t) noexcept {
+        return a + (b - a) * t;
     }
 };
 
@@ -121,6 +139,6 @@ inline std::ostream& operator<<(std::ostream& os, const Vector3D& v) {
 }
 
 // Scalar multiplication (scalar * vector)
-inline Vector3D operator*(double scalar, const Vector3D& v) {
+constexpr inline Vector3D operator*(double scalar, const Vector3D& v) noexcept {
     return v * scalar;
 } 
