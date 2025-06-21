@@ -8,13 +8,14 @@
 #include <vector> // Added for std::vector
 #include <random> // Added for random number generation
 
+
 // Error callback for GLFW
 static void errorCallback(int error, const char* description) {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 }
 
 // Key callback for GLFW
-static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+static void keyCallback(GLFWwindow* window, int key, int scancode [[maybe_unused]], int action, int mods [[maybe_unused]]) {
     GLVisualizer* visualizer = static_cast<GLVisualizer*>(glfwGetWindowUserPointer(window));
     
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
@@ -47,6 +48,10 @@ static void keyCallback(GLFWwindow* window, int key, int scancode, int action, i
         if (action == GLFW_PRESS) visualizer->keyL_ = true;
         else if (action == GLFW_RELEASE) visualizer->keyL_ = false;
     }
+    // Toggle camera mode with 'C' key
+    else if (key == GLFW_KEY_C && action == GLFW_PRESS) {
+        visualizer->toggleCameraMode();
+    }
 }
 
 GLVisualizer::GLVisualizer(Simulation& simulation, unsigned int width, unsigned int height, const std::string& title)
@@ -64,10 +69,15 @@ GLVisualizer::GLVisualizer(Simulation& simulation, unsigned int width, unsigned 
       directionX_(1.0f),
       directionY_(0.0f),
       rotationAngle_(0.0f),
-      rotationSpeed_(0.05f),  // Rotation speed in radians per frame (about 3 degrees)
+      rotationSpeed_(0.1f),  // Rotation speed in radians per frame (about 3 degrees)
       moveSpeed_(0.15f),      // Movement speed
       mouseX_(0.0),
-      mouseY_(0.0) {
+      mouseY_(0.0),
+      cameraHeight_(5.0f),   // Height of camera above the map
+      cameraFollowSpeed_(0.1f), // Camera follows at 10% of the distance per frame
+      cameraPosition_(0.0, 0.0, cameraHeight_),
+      cameraTarget_(0.0, 0.0, 0.0),
+      useFollowCamera_(true) { // Enable follow camera by default
     
     // Initialize random seed
     srand(static_cast<unsigned int>(time(nullptr)));
@@ -128,16 +138,27 @@ GLVisualizer::GLVisualizer(Simulation& simulation, unsigned int width, unsigned 
         GLVisualizer* visualizer = static_cast<GLVisualizer*>(glfwGetWindowUserPointer(window));
         visualizer->width_ = width;
         visualizer->height_ = height;
+        
+        // Update viewport to cover the entire window
         glViewport(0, 0, width, height);
         
-        // Update projection matrix for new aspect ratio
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        float aspectRatio = static_cast<float>(width) / static_cast<float>(height);
-        float viewHeight = 10.0f;
-        float viewWidth = viewHeight * aspectRatio; // Use normal aspect ratio scaling
-        glOrtho(-viewWidth/2, viewWidth/2, -viewHeight/2, viewHeight/2, -1.0, 1.0);
-        glMatrixMode(GL_MODELVIEW);
+        // Update projection matrix based on the current view mode
+        if (visualizer->useFollowCamera_) {
+            visualizer->setupPerspective();
+        } else {
+            // Orthographic projection for the traditional view
+            glMatrixMode(GL_PROJECTION);
+            glLoadIdentity();
+            float aspectRatio = static_cast<float>(width) / static_cast<float>(height);
+            float viewHeight = 10.0f;
+            float viewWidth = viewHeight * aspectRatio;
+            
+            // Center the view
+            glOrtho(-viewWidth/2, viewWidth/2, -viewHeight/2, viewHeight/2, -1.0, 1.0);
+            
+            // Return to modelview matrix
+            glMatrixMode(GL_MODELVIEW);
+        }
     });
     
     // Initialize obstacles
@@ -152,6 +173,7 @@ GLVisualizer::GLVisualizer(Simulation& simulation, unsigned int width, unsigned 
     std::cout << "Controls:" << std::endl;
     std::cout << "  - W, A, S, D: Move particle" << std::endl;
     std::cout << "  - K, L: Rotate torch left/right" << std::endl;
+    std::cout << "  - C: Toggle between follow camera and top-down view" << std::endl;
     std::cout << "  - ESC: Exit" << std::endl;
 }
 
@@ -195,22 +217,28 @@ GLVisualizer::~GLVisualizer() {
 }
 
 bool GLVisualizer::initGL() {
-    // Set the viewport
+    // Set the viewport to cover the entire window
     glViewport(0, 0, width_, height_);
     
-    // Set up the projection matrix
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    
-    // Orthographic projection - use full window size
-    // Adjust the view size to match the window aspect ratio
-    float aspectRatio = static_cast<float>(width_) / static_cast<float>(height_);
-    
-    // Use fixed height and adjust width based on aspect ratio
-    float viewHeight = 10.0f;
-    float viewWidth = viewHeight * aspectRatio; // Use normal aspect ratio scaling
-    
-    glOrtho(-viewWidth/2, viewWidth/2, -viewHeight/2, viewHeight/2, -1.0, 1.0);
+    // Set up the projection matrix based on the camera mode
+    if (useFollowCamera_) {
+        setupPerspective();
+    } else {
+        // Use orthographic projection for the traditional view
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        
+        // Orthographic projection - use full window size
+        // Adjust the view size to match the window aspect ratio
+        float aspectRatio = static_cast<float>(width_) / static_cast<float>(height_);
+        
+        // Use fixed height and adjust width based on aspect ratio
+        float viewHeight = 10.0f;
+        float viewWidth = viewHeight * aspectRatio;
+        
+        // Center the view
+        glOrtho(-viewWidth/2, viewWidth/2, -viewHeight/2, viewHeight/2, -1.0, 1.0);
+    }
     
     // Set up the modelview matrix
     glMatrixMode(GL_MODELVIEW);
@@ -220,10 +248,53 @@ bool GLVisualizer::initGL() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
+    // Enable depth testing for 3D rendering
+    if (useFollowCamera_) {
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+    }
+    
     // Set clear color to very dark gray (almost black) for tactical map look
     glClearColor(0.05f, 0.05f, 0.07f, 1.0f);
     
     return true;
+}
+
+void GLVisualizer::setupPerspective() {
+    // Set up perspective projection for the follow camera
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    
+    // Calculate the aspect ratio
+    float aspectRatio = static_cast<float>(width_) / static_cast<float>(height_);
+    
+    // Use a narrower field of view (45 degrees) for less distortion
+    // Adjust near and far clipping planes to better fit our scene
+    gluPerspective(45.0f, aspectRatio, 0.1f, 100.0f);
+    
+    // Return to modelview matrix
+    glMatrixMode(GL_MODELVIEW);
+}
+
+void GLVisualizer::updateCamera() {
+    // Get the central particle
+    Particle* centralParticle = simulation_.getCentralParticle();
+    if (!centralParticle) return;
+    
+    // Get the current particle position
+    Vector3D particlePos = centralParticle->getPosition();
+    
+    // Set the camera target directly to the particle's position (no interpolation)
+    // This ensures the camera is always looking at the particle
+    cameraTarget_.x = particlePos.x;
+    cameraTarget_.y = particlePos.y;
+    cameraTarget_.z = 0.0; // Keep target at ground level
+    
+    // Position the camera directly above the particle at a fixed height
+    // No interpolation to prevent lag and distortion
+    cameraPosition_.x = particlePos.x;
+    cameraPosition_.y = particlePos.y;
+    cameraPosition_.z = cameraHeight_;
 }
 
 void GLVisualizer::initializeObstacles() {
@@ -331,6 +402,11 @@ void GLVisualizer::run() {
         
         // Update simulation
         update();
+        
+        // Update camera position if using follow camera
+        if (useFollowCamera_) {
+            updateCamera();
+        }
         
         // Render
         render();
@@ -528,14 +604,33 @@ void GLVisualizer::update() {
 }
 
 void GLVisualizer::render() {
-    // Clear the screen
-    glClear(GL_COLOR_BUFFER_BIT);
+    // Clear the color and depth buffer
+    if (useFollowCamera_) {
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    } else {
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
     
     // Reset the modelview matrix
+    glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     
-    // Draw the grid overlay
-    drawGrid();
+    // Set up the camera view if using follow camera
+    if (useFollowCamera_) {
+        // Set up the camera view using gluLookAt
+        // Use a fixed up vector (0,1,0) to prevent tilting
+        gluLookAt(
+            cameraPosition_.x, cameraPosition_.y, cameraPosition_.z, // Camera position
+            cameraTarget_.x, cameraTarget_.y, cameraTarget_.z,       // Look at target
+            0.0f, 1.0f, 0.0f                                        // Up vector (fixed)
+        );
+        
+        // Enable depth testing for proper 3D rendering
+        glEnable(GL_DEPTH_TEST);
+    } else {
+        // Disable depth testing for 2D rendering
+        glDisable(GL_DEPTH_TEST);
+    }
     
     // Get the central particle
     Particle* centralParticle = simulation_.getCentralParticle();
@@ -543,8 +638,8 @@ void GLVisualizer::render() {
         // Get particle properties
         const Vector3D& position = centralParticle->getPosition();
         
-        // Draw the direction torch first (behind the particle)
-        drawTorch(position.x, position.y, directionX_, directionY_, particleRadius_ * 1.5f);
+        // Draw the grid overlay
+        drawGrid();
         
         // Draw the obstacles
         glColor3f(0.5f, 0.5f, 0.5f); // Gray color for obstacles
@@ -552,16 +647,19 @@ void GLVisualizer::render() {
             drawRectangle(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
         }
         
-        // Draw site markers
-        // drawSiteMarkers();
-        
         // Draw location labels
         drawLocationLabels();
+        
+        // Draw the direction torch (behind the particle)
+        drawTorch(position.x, position.y, directionX_, directionY_, particleRadius_ * 1.5f);
         
         // Draw the particle as a solid ball
         glColor3f(1.0f, 0.2f, 0.2f); // Bright red color
         drawCircle(position.x, position.y, particleRadius_, particleSegments_);
     } else {
+        // Draw the grid overlay
+        drawGrid();
+        
         // Draw the obstacles
         glColor3f(0.5f, 0.5f, 0.5f); // Gray color for obstacles
         for (const auto& obstacle : obstacles_) {
@@ -577,28 +675,50 @@ void GLVisualizer::render() {
 }
 
 void GLVisualizer::drawCircle(float x, float y, float radius, int segments) {
+    // In 3D mode, we need to draw at z=0 to be visible on the ground plane
+    float z = 0.01f; // Slightly above the ground to avoid z-fighting
+    
     glBegin(GL_TRIANGLE_FAN);
     
     // Center vertex
-    glVertex2f(x, y);
+    if (useFollowCamera_) {
+        glVertex3f(x, y, z);
+    } else {
+        glVertex2f(x, y);
+    }
     
     // Circle vertices
     for (int i = 0; i <= segments; i++) {
         float angle = 2.0f * M_PI * static_cast<float>(i) / static_cast<float>(segments);
         float vx = x + radius * std::cos(angle);
         float vy = y + radius * std::sin(angle);
-        glVertex2f(vx, vy);
+        
+        if (useFollowCamera_) {
+            glVertex3f(vx, vy, z);
+        } else {
+            glVertex2f(vx, vy);
+        }
     }
     
     glEnd();
 }
 
 void GLVisualizer::drawRectangle(float x, float y, float width, float height) {
+    // In 3D mode, we need to draw at z=0 to be visible on the ground plane
+    float z = 0.0f;
+    
     glBegin(GL_QUADS);
-    glVertex2f(x - width/2, y - height/2);
-    glVertex2f(x + width/2, y - height/2);
-    glVertex2f(x + width/2, y + height/2);
-    glVertex2f(x - width/2, y + height/2);
+    if (useFollowCamera_) {
+        glVertex3f(x - width/2, y - height/2, z);
+        glVertex3f(x + width/2, y - height/2, z);
+        glVertex3f(x + width/2, y + height/2, z);
+        glVertex3f(x - width/2, y + height/2, z);
+    } else {
+        glVertex2f(x - width/2, y - height/2);
+        glVertex2f(x + width/2, y - height/2);
+        glVertex2f(x + width/2, y + height/2);
+        glVertex2f(x - width/2, y + height/2);
+    }
     glEnd();
 }
 
@@ -682,17 +802,30 @@ void GLVisualizer::drawGrid() {
     // Grid cell size
     float gridSize = 0.5f;
     
+    // Z coordinate for 3D mode (slightly above ground)
+    float z = 0.0f;
+    
     // Draw vertical grid lines
     glBegin(GL_LINES);
     for (float x = -viewWidth/2; x <= viewWidth/2; x += gridSize) {
-        glVertex2f(x, -viewHeight/2);
-        glVertex2f(x, viewHeight/2);
+        if (useFollowCamera_) {
+            glVertex3f(x, -viewHeight/2, z);
+            glVertex3f(x, viewHeight/2, z);
+        } else {
+            glVertex2f(x, -viewHeight/2);
+            glVertex2f(x, viewHeight/2);
+        }
     }
     
     // Draw horizontal grid lines
     for (float y = -viewHeight/2; y <= viewHeight/2; y += gridSize) {
-        glVertex2f(-viewWidth/2, y);
-        glVertex2f(viewWidth/2, y);
+        if (useFollowCamera_) {
+            glVertex3f(-viewWidth/2, y, z);
+            glVertex3f(viewWidth/2, y, z);
+        } else {
+            glVertex2f(-viewWidth/2, y);
+            glVertex2f(viewWidth/2, y);
+        }
     }
     glEnd();
 } 
@@ -1067,4 +1200,40 @@ void GLVisualizer::drawTorch(float x, float y, float dirX, float dirY, float len
     // Reset line width
     glLineWidth(1.0f);
     glDisable(GL_BLEND);
+} 
+
+void GLVisualizer::toggleCameraMode() {
+    // Toggle between follow camera and orthographic view
+    useFollowCamera_ = !useFollowCamera_;
+    
+    // Update the OpenGL settings for the new mode
+    if (useFollowCamera_) {
+        // Enable depth testing for 3D
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+        
+        // Set up perspective projection
+        setupPerspective();
+        
+        std::cout << "Camera mode: Follow camera (3D perspective)" << std::endl;
+    } else {
+        // Disable depth testing for 2D
+        glDisable(GL_DEPTH_TEST);
+        
+        // Set up orthographic projection
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        
+        float aspectRatio = static_cast<float>(width_) / static_cast<float>(height_);
+        float viewHeight = 10.0f;
+        float viewWidth = viewHeight * aspectRatio;
+        
+        // Center the view
+        glOrtho(-viewWidth/2, viewWidth/2, -viewHeight/2, viewHeight/2, -1.0, 1.0);
+        
+        // Return to modelview matrix
+        glMatrixMode(GL_MODELVIEW);
+        
+        std::cout << "Camera mode: Top-down view (2D orthographic)" << std::endl;
+    }
 } 

@@ -2,7 +2,6 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
-#include <string>
 #include <vector>
 #ifdef __APPLE__
 #include <GLUT/glut.h> // macOS path
@@ -10,6 +9,7 @@
 #include <GL/freeglut.h> // Linux/Windows path
 #endif
 #include "simulation.hpp"
+#include "vector3d.hpp" // Implied import for Vector3D
 
 
 /**
@@ -54,6 +54,11 @@ public:
      */
     void run();
     
+    /**
+     * Toggle between follow camera and orthographic view
+     */
+    void toggleCameraMode();
+    
     // Key state variables (public for callback access)
     bool keyW_, keyA_, keyS_, keyD_;
     bool keyK_, keyL_; // K and L keys for rotation
@@ -73,6 +78,16 @@ private:
      * Render the current state of the simulation
      */
     void render();
+    
+    /**
+     * Update the camera position to follow the particle
+     */
+    void updateCamera();
+    
+    /**
+     * Set up the perspective projection
+     */
+    void setupPerspective();
     
     /**
      * Draw a circle at the given position with the given radius
@@ -165,7 +180,7 @@ private:
     unsigned int height_;
     
     // Visualization parameters
-    const float particleRadius_ = 0.3f; // Reduced particle size (was 0.5f)
+    const float particleRadius_ = 0.15f; // Reduced particle size (was 0.2f)
     int particleSegments_;
     
     // Direction vector (normalized)
@@ -182,4 +197,11 @@ private:
     
     // Obstacles in the map
     std::vector<Obstacle> obstacles_;
+    
+    // Camera parameters
+    float cameraHeight_; // Height of camera above the map
+    float cameraFollowSpeed_; // How quickly the camera follows the particle
+    Vector3D cameraPosition_; // Current camera position
+    Vector3D cameraTarget_; // Current camera target (usually the particle)
+    bool useFollowCamera_; // Whether to use the follow camera or fixed orthographic view
 }; 

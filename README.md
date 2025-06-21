@@ -1,6 +1,6 @@
-# Physics Simulation Project
+# Phy Simulation Project
 
-A C++ physics simulation project that models particle dynamics in 3D space with an OpenGL-based tactical map visualization.
+A C++ simulation project that models particle dynamics in 3D space with an OpenGL-based tactical map visualization and 3D follow camera.
 
 ## Features
 
@@ -11,6 +11,8 @@ A C++ physics simulation project that models particle dynamics in 3D space with 
 - Keyboard controls for player movement and torch rotation
 - Collision detection with map obstacles
 - Location markers and labels for tactical navigation
+- 3D follow camera that tracks the player from above
+- Toggle between 3D perspective and 2D orthographic views
 
 ## Project Structure
 
@@ -80,11 +82,12 @@ A C++ physics simulation project that models particle dynamics in 3D space with 
 
 - **W, A, S, D**: Move the player character
 - **K, L**: Rotate the torch light left/right
+- **C**: Toggle between follow camera (3D) and top-down view (2D)
 - **ESC**: Exit the application
 
 ## Development Journey
 
-This project evolved from a basic physics simulation to a tactical map visualization with advanced lighting effects. Here's a summary of the key development steps and decisions:
+This project evolved from a basic physics simulation to a tactical map visualization with advanced lighting effects and camera systems. Here's a summary of the key development steps and decisions:
 
 ### Initial Setup
 
@@ -119,6 +122,16 @@ This project evolved from a basic physics simulation to a tactical map visualiza
 - Added volumetric particles for additional density and realism
 - Implemented corner detection for smoother bending around obstacles
 
+### 3D Follow Camera System
+
+- Implemented a perspective projection camera that follows the player
+- Created a camera system that positions itself directly above the player
+- Added smooth camera movement with interpolation for a natural feel
+- Implemented proper depth handling for 3D rendering
+- Added the ability to toggle between 3D follow camera and 2D top-down view
+- Updated all rendering methods to work correctly in both 2D and 3D modes
+- Used proper z-coordinates for all elements to ensure correct depth ordering
+
 ### Visual Enhancements
 
 - Added a glowing effect around the player character
@@ -126,6 +139,7 @@ This project evolved from a basic physics simulation to a tactical map visualiza
 - Created a grid overlay for tactical map appearance
 - Added smooth color transitions in the torch light effect
 - Implemented semi-transparent effects for more realistic lighting
+- Enhanced 3D visualization with proper depth testing and z-ordering
 
 ### Performance Optimizations
 
@@ -133,6 +147,7 @@ This project evolved from a basic physics simulation to a tactical map visualiza
 - Implemented selective ray outline drawing for better performance
 - Added distance-based influence factors for more realistic light behavior
 - Optimized collision detection for better performance
+- Balanced camera smoothing for responsive yet stable movement
 
 ## License
 
